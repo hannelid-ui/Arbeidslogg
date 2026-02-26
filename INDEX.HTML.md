@@ -1,0 +1,641 @@
+INDEX.HTML  
+  
+<!DOCTYPE html>  
+  
+<html lang="nb">  
+<head>  
+<meta charset="UTF-8"/>  
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>  
+<title>Arbeidslogg - Nesodden</title>  
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>  
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>  
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>  
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>  
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>  
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>  
+<style>  
+* { box-sizing: border-box; margin: 0; padding: 0; }  
+body { background: #F5F0E8; font-family: 'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif; color: #1A1A2E; }  
+textarea, input, button, select { font-family: inherit; }  
+mark { background: #E8F5E9; color: #2E7D32; border-radius: 3px; padding: 0 2px; font-weight: bold; }  
+</style>  
+</head>  
+<body>  
+<div id="root"></div>  
+  
+<script>  
+  
+const firebaseConfig = {  
+  apiKey: "AIzaSyAFVfStxkZr0dNqR0jSK5yonckjWd-HrZY",  
+  authDomain: "arbeidslogg-a5112.firebaseapp.com",  
+  projectId: "arbeidslogg-a5112",  
+  storageBucket: "arbeidslogg-a5112.firebasestorage.app",  
+  messagingSenderId: "915869065739",  
+  appId: "1:915869065739:web:a0504be9b959f68d685d0e"  
+};  
+  
+firebase.initializeApp(firebaseConfig);  
+const auth = firebase.auth();  
+const db   = firebase.firestore();  
+</script>  
+  
+<script type="text/babel">  
+const { useState, useEffect, useRef } = React;  
+  
+const CA  = "#3D5A80";  
+const CAL = "#EEF2F7";  
+const CT  = "#E8534A";  
+const CN  = "#2E7D32";  
+const CNB = "#E8F5E9";  
+const CH  = "#7B3FA0";  
+const CHB = "#F3EAF9";  
+const CF  = "#1565C0";  
+const CFB = "#E3F2FD";  
+  
+const BREAKS = [  
+  { name:"Hostferie",         from:"2025-09-29", to:"2025-10-03" },  
+  { name:"Plandag (elevfri)", from:"2025-11-12", to:"2025-11-12" },  
+  { name:"Juleferie",         from:"2025-12-23", to:"2026-01-02" },  
+  { name:"Vinterferie",       from:"2026-02-16", to:"2026-02-20" },  
+  { name:"Paskeferie",        from:"2026-03-30", to:"2026-04-06" },  
+  { name:"Elevfri",           from:"2026-05-15", to:"2026-05-15" },  
+  { name:"Sommerferie",       from:"2026-06-20", to:"2026-08-16" },  
+  { name:"Hostferie",         from:"2026-09-28", to:"2026-10-02" },  
+  { name:"Plandag (elevfri)", from:"2026-11-11", to:"2026-11-11" },  
+  { name:"Juleferie",         from:"2026-12-21", to:"2027-01-03" },  
+  { name:"Vinterferie",       from:"2027-02-22", to:"2027-02-26" },  
+  { name:"Paskeferie",        from:"2027-03-22", to:"2027-03-29" },  
+  { name:"Elevfri",           from:"2027-05-07", to:"2027-05-07" },  
+  { name:"Sommerferie",       from:"2027-06-18", to:"2027-08-15" },  
+];  
+function getBreak(ds) { for (const b of BREAKS) if (ds>=b.from&&ds<=b.to) return b; return null; }  
+function getBreaksMonth(y,m) {  
+  const lo=`${y}-${String(m+1).padStart(2,"0")}-01`, hi=`${y}-${String(m+1).padStart(2,"0")}-31`;  
+  const seen=new Set(), res=[];  
+  for (const b of BREAKS) if (!seen.has(b.from)&&b.from<=hi&&b.to>=lo) { seen.add(b.from); res.push(b); }  
+  return res;  
+}  
+  
+function easter(year) {  
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,  
+    f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,  
+    i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,  
+    m=Math.floor((a+11*h+22*l)/451),  
+    mo=Math.floor((h+l-7*m+114)/31),dy=((h+l-7*m+114)%31)+1;  
+  return new Date(year,mo-1,dy);  
+}  
+function addD(date,n) { const d=new Date(date); d.setDate(d.getDate()+n); return d; }  
+function isoD(date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`; }  
+function holidays(year) {  
+  const e=easter(year);  
+  return {  
+    [`${year}-01-01`]:"Nyttarsdag",  
+    [isoD(addD(e,-3))]:"Sjaertorsdag",  
+    [isoD(addD(e,-2))]:"Langfredag",  
+    [isoD(e)]:"1. paskedag",  
+    [isoD(addD(e,1))]:"2. paskedag",  
+    [`${year}-05-01`]:"Arbeidernes dag",  
+    [`${year}-05-17`]:"Grunnlovsdag",  
+    [isoD(addD(e,39))]:"Kristi himmelfartsdag",  
+    [isoD(addD(e,49))]:"1. pinsedag",  
+    [isoD(addD(e,50))]:"2. pinsedag",  
+    [`${year}-12-25`]:"1. juledag",  
+    [`${year}-12-26`]:"2. juledag",  
+  };  
+}  
+function extras(year) {  
+  return {  
+    [`${year}-12-24`]:"Julaften",  
+    [`${year}-12-31`]:"Nyttarsaften",  
+    [`${year}-02-14`]:"Valentinsdag",  
+    [`${year}-10-31`]:"Halloween",  
+    [isoD(addD(easter(year),-7))]:"Palmesøndag",  
+  };  
+}  
+  
+function todayISO() { return new Date().toISOString().split("T")[0]; }  
+function daysInMonth(y,m) { return new Date(y,m+1,0).getDate(); }  
+function firstDay(y,m) { const d=new Date(y,m,1).getDay(); return d===0?6:d-1; }  
+function ymd(y,m,d) { return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }  
+function fmtLong(ds)  { return new Date(ds+"T00:00:00").toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"}); }  
+function fmtShort(ds) { return new Date(ds+"T00:00:00").toLocaleDateString("nb-NO",{day:"numeric",month:"long",year:"numeric"}); }  
+const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];  
+const DAYS   = ["Man","Tir","Ons","Tor","Fre","Lor","Son"];  
+  
+function HL({text,names,max}) {  
+  const t = max&&text.length>max ? text.slice(0,max)+"..." : text;  
+  if (!names||!names.length) return <span>{t}</span>;  
+  const re = new RegExp(`\\b(${names.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})\\b`,"gi");  
+  const parts=[]; let last=0,m;  
+  while((m=re.exec(t))!==null){  
+    if(m.index>last) parts.push(<span key={last}>{t.slice(last,m.index)}</span>);  
+    parts.push(<mark key={m.index}>{m[0]}</mark>);  
+    last=m.index+m[0].length;  
+  }  
+  if(last<t.length) parts.push(<span key={last}>{t.slice(last)}</span>);  
+  return <span>{parts}</span>;  
+}  
+  
+function TParts({text}) {  
+  const parts=[]; let last=0, re=/\[([^\]]+)\]/g, m;  
+  while((m=re.exec(text))!==null){  
+    if(m.index>last) parts.push(<span key={last}>{text.slice(last,m.index)}</span>);  
+    parts.push(<mark key={m.index} style={{background:"#FFF9C4",color:"#7B5800",borderRadius:4,padding:"0 3px",fontWeight:"bold",fontSize:12}}>{m[0]}</mark>);  
+    last=m.index+m[0].length;  
+  }  
+  if(last<text.length) parts.push(<span key={last}>{text.slice(last)}</span>);  
+  return <span>{parts}</span>;  
+}  
+  
+function escH(t){ return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }  
+function hlHTML(text,names){  
+  if(!names.length)return escH(text);  
+  const re=new RegExp(`\\b(${names.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})\\b`,"gi");  
+  return escH(text).replace(re,m=>`<mark>${m}</mark>`);  
+}  
+function buildTxt(entries){ return entries.map(([d,v])=>`${fmtLong(d)}\n${"=".repeat(40)}\n${v.notat}\n`).join("\n"); }  
+function dlBlob(content,name,type){ const b=new Blob([content],{type}),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }  
+function openPrint(title,entries,students){  
+  const rows=entries.map(([d,v])=>`<div class="entry"><div class="date">${fmtLong(d)}</div><div class="body">${hlHTML(v.notat,students)}</div></div>`).join("");  
+  const html=`<!DOCTYPE html><html lang="nb"><head><meta charset="UTF-8"><title>${title}</title><style>@page{margin:2cm}body{font-family:'Palatino Linotype',Palatino,Georgia,serif;color:#1A1A2E;font-size:13pt;line-height:1.7}h1{font-size:18pt;color:#3D5A80;border-bottom:2px solid #3D5A80;padding-bottom:8px;margin-bottom:24px}.entry{margin-bottom:28px;page-break-inside:avoid}.date{font-size:12pt;font-weight:bold;color:#3D5A80;padding:6px 10px;background:#EEF2F7;border-left:4px solid #3D5A80;border-radius:0 6px 6px 0;margin-bottom:6px}.body{white-space:pre-wrap}mark{background:#E8F5E9;color:#2E7D32;padding:0 2px;border-radius:3px;font-weight:bold}.footer{margin-top:40px;font-size:10pt;color:#888;border-top:1px solid #ccc;padding-top:8px}</style></head><body><h1>${title}</h1>${rows}<div class="footer">Eksportert ${new Date().toLocaleDateString("nb-NO",{day:"numeric",month:"long",year:"numeric"})} - Arbeidslogg Nesodden</div></body></html>`;  
+  
+const w=window.open(””,”_blank”);w.document.write(html);w.document.close();w.onload=()=>w.print();  
+}  
+function buildICS(entries,inclSchool,years){  
+function id(ds){return ds.replace(/-/g,””);} function ie(s){return s.replace(/\/g,”\\”).replace(/;/g,”\;”).replace(/,/g,”\,”).replace(/\n/g,”\n”);}  
+const evts=entries.map(([date,val])=>{const nd=isoD(addD(new Date(date+“T00:00:00”),1)).replace(/-/g,””);return [“BEGIN:VEVENT”,`UID:log-${date}-${Math.random().toString(36).slice(2)}@ark`,`DTSTART;VALUE=DATE:${id(date)}`,`DTEND;VALUE=DATE:${nd}`,`SUMMARY:Arbeidslogg - ${ie(val.notat.split("\n")[0].slice(0,60)||"Logg")}`,`DESCRIPTION:${ie(val.notat)}`,“CATEGORIES:Arbeidslogg”,“END:VEVENT”].join(”\r\n”);});  
+if(inclSchool){new Set(years).forEach(y=>{Object.entries(holidays(y)).forEach(([d,n])=>{const nd=isoD(addD(new Date(d+“T00:00:00”),1)).replace(/-/g,””);evts.push([“BEGIN:VEVENT”,`UID:hol-${d}@ark`,`DTSTART;VALUE=DATE:${id(d)}`,`DTEND;VALUE=DATE:${nd}`,`SUMMARY:${ie(n)}`,“CATEGORIES:Helligdag”,“TRANSP:TRANSPARENT”,“END:VEVENT”].join(”\r\n”));});BREAKS.filter(b=>b.from.startsWith(String(y))||b.to.startsWith(String(y))).forEach(b=>{const nd=isoD(addD(new Date(b.to+“T00:00:00”),1)).replace(/-/g,””);evts.push([“BEGIN:VEVENT”,`UID:ferie-${b.from}@ark`,`DTSTART;VALUE=DATE:${id(b.from)}`,`DTEND;VALUE=DATE:${nd}`,`SUMMARY:${ie(b.name)} - Nesodden`,“CATEGORIES:Skoleferie”,“TRANSP:TRANSPARENT”,“END:VEVENT”].join(”\r\n”));});});}  
+return [“BEGIN:VCALENDAR”,“VERSION:2.0”,“PRODID:-//Arbeidslogg Nesodden//NO”,“CALSCALE:GREGORIAN”,“METHOD:PUBLISH”,“X-WR-CALNAME:Arbeidslogg Nesodden”,…evts,“END:VCALENDAR”].join(”\r\n”);  
+}  
+  
+const DEFAULT_TEMPLATES = [  
+{id:“t1”,label:“God innsats”,     text:”[Navn]: God innsats og konsentrasjon. Jobbet med [fag]. Tydelig fremgang.”},  
+{id:“t2”,label:“Utfordrende dag”, text:”[Navn]: Utfordrende dag. Hadde vansker med [fag]. Bor folges opp.”},  
+{id:“t3”,label:“Fravar”,          text:”[Navn] var ikke til stede i dag.”},  
+{id:“t4”,label:“Foreldrekontakt”, text:“Kontaktet foresatte til [Navn] angaende [tema]. [Kommentar].”},  
+{id:“t5”,label:“Lesing”,          text:”[Navn]: Leseflykt og leseforstaaelse (s. [sider]). [Kommentar].”},  
+{id:“t6”,label:“Matte”,           text:”[Navn]: Matematikk - [emne]. Trenger mer ovelse pa [tema].”},  
+];  
+  
+const sBtn  = {background:“rgba(255,255,255,0.15)”,border:“1px solid rgba(255,255,255,0.3)”,borderRadius:8,color:”#fff”,padding:“5px 10px”,fontSize:12,cursor:“pointer”};  
+const nvBtn = {background:“none”,border:“none”,fontSize:24,cursor:“pointer”,color:CA,padding:“0 10px”};  
+const card  = {background:”#fff”,borderRadius:10,padding:“12px 16px”,marginBottom:10,cursor:“pointer”,border:“1px solid #E8E0D4”,boxShadow:“0 1px 3px rgba(0,0,0,0.05)”};  
+const secL  = {fontSize:11,color:”#999”,letterSpacing:1,textTransform:“uppercase”,marginBottom:10};  
+const inpSt = {width:“100%”,padding:“10px 12px”,borderRadius:8,border:“1px solid #D0C8BC”,fontSize:14,outline:“none”,marginBottom:10,boxSizing:“border-box”,display:“block”};  
+const bPri  = {background:CA,color:”#fff”,border:“none”,borderRadius:8,padding:“10px 18px”,fontSize:14,cursor:“pointer”,fontWeight:“bold”};  
+const bSec  = {background:“none”,color:CA,border:`1px solid ${CA}`,borderRadius:8,padding:“10px 18px”,fontSize:14,cursor:“pointer”};  
+const moL   = {fontSize:11,color:”#888”,letterSpacing:1,textTransform:“uppercase”,marginBottom:8,fontWeight:“bold”};  
+  
+function LoginScreen({onLogin,error}) {  
+return (  
+<div style={{minHeight:“100vh”,display:“flex”,alignItems:“center”,justifyContent:“center”,background:”#F5F0E8”,padding:20}}>  
+<div style={{background:”#fff”,borderRadius:20,padding:“40px 32px”,maxWidth:360,width:“100%”,boxShadow:“0 8px 32px rgba(0,0,0,0.1)”,textAlign:“center”}}>  
+<div style={{fontSize:48,marginBottom:16}}>📖</div>  
+<h1 style={{fontSize:22,color:CA,marginBottom:8,fontStyle:“italic”}}>Arbeidslogg</h1>  
+<p style={{color:”#666”,fontSize:14,marginBottom:8}}>Nesodden kommune</p>  
+<p style={{color:”#999”,fontSize:13,marginBottom:32,lineHeight:1.6}}>Logg inn med Google-kontoen din. Loggen din er privat og synkroniseres automatisk mellom alle enhetene dine.</p>  
+{error && <div style={{background:”#FEE2E2”,color:”#C0503A”,borderRadius:8,padding:“10px 14px”,marginBottom:16,fontSize:13}}>{error}</div>}  
+<button onClick={onLogin} style={{…bPri,width:“100%”,padding:“14px”,fontSize:15,display:“flex”,alignItems:“center”,justifyContent:“center”,gap:10}}>  
+<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>  
+Logg inn med Google  
+</button>  
+</div>  
+</div>  
+);  
+}  
+  
+function ExportModal({logs,year,month,selDate,view,onClose}) {  
+const [scope,setScope]=useState(view===“day”?“day”:“month”);  
+const [fmt,setFmt]=useState(“pdf”);  
+const [inclSchool,setInclSchool]=useState(true);  
+const mE=Object.entries(logs).filter(([d,v])=>v.notat?.trim()&&d.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).sort((a,b)=>a[0].localeCompare(b[0]));  
+const dE=logs[selDate]?.notat?.trim()?[[selDate,logs[selDate]]]:[];  
+const aE=Object.entries(logs).filter(([,v])=>v.notat?.trim()).sort((a,b)=>a[0].localeCompare(b[0]));  
+const entries=scope===“day”?dE:scope===“month”?mE:aE;  
+const label=scope===“day”?fmtShort(selDate):scope===“month”?`${MONTHS[month]} ${year}`:“Hele loggen”;  
+function doExport(){  
+if(fmt!==“ics”&&!entries.length)return;  
+if(fmt===“pdf”)openPrint(`Arbeidslogg - ${label}`,entries,[]);  
+else if(fmt===“txt”)dlBlob(buildTxt(entries),`arbeidslogg-${label.toLowerCase().replace(/ /g,"-")}.txt`,“text/plain;charset=utf-8”);  
+else{const yrs=new Set([year,…entries.map(([d])=>parseInt(d))]);dlBlob(buildICS(entries,inclSchool,[…yrs]),“arbeidslogg.ics”,“text/calendar;charset=utf-8”);}  
+onClose();  
+}  
+const ok=fmt===“ics”||entries.length>0;  
+return (  
+<div style={{position:“fixed”,inset:0,background:“rgba(0,0,0,0.45)”,zIndex:50,display:“flex”,alignItems:“center”,justifyContent:“center”,padding:16}} onClick={e=>e.target===e.currentTarget&&onClose()}>  
+<div style={{background:”#fff”,borderRadius:16,width:“100%”,maxWidth:440,overflow:“hidden”,boxShadow:“0 8px 32px rgba(0,0,0,0.2)”}}>  
+<div style={{background:CA,color:”#fff”,padding:“15px 18px”,display:“flex”,justifyContent:“space-between”,alignItems:“center”}}>  
+<span style={{fontSize:15,fontStyle:“italic”}}>Eksporter logg</span>  
+<button onClick={onClose} style={{background:“none”,border:“none”,color:”#fff”,fontSize:20,cursor:“pointer”}}>x</button>  
+</div>  
+<div style={{padding:“18px”}}>  
+<div style={{marginBottom:16}}>  
+<div style={moL}>Hva?</div>  
+{[[“day”,“Denne dagen”],[“month”,`${MONTHS[month]} ${year}`],[“all”,“Hele loggen”]].map(([v,l])=>(  
+<label key={v} style={{display:“flex”,alignItems:“center”,gap:10,marginBottom:8,cursor:“pointer”,fontSize:14}}>  
+<input type=“radio” name=“scope” value={v} checked={scope===v} onChange={()=>setScope(v)}/>  
+<span>{l}{v===“month”&&<span style={{color:”#888”,fontSize:12}}> - {mE.length} dager</span>}{v===“all”&&<span style={{color:”#888”,fontSize:12}}> - {aE.length} totalt</span>}{v===“day”&&!dE.length&&<span style={{color:”#C0503A”,fontSize:12}}> - ingen logg</span>}</span>  
+</label>  
+))}  
+</div>  
+<div style={{marginBottom:14}}>  
+<div style={moL}>Format</div>  
+{[[“pdf”,“PDF (via utskrift)”],[“txt”,“Tekstfil (.txt)”],[“ics”,“Kalender (.ics) - Outlook / Apple / Google”]].map(([v,l])=>(  
+<label key={v} style={{display:“flex”,alignItems:“center”,gap:10,marginBottom:8,cursor:“pointer”,fontSize:14}}>  
+<input type=“radio” name=“fmt” value={v} checked={fmt===v} onChange={()=>setFmt(v)}/><span>{l}</span>  
+</label>  
+))}  
+</div>  
+{fmt===“ics”&&<div style={{background:CFB,borderRadius:10,padding:“11px 14px”,marginBottom:14,border:`1px solid ${CF}30`}}>  
+<label style={{display:“flex”,alignItems:“center”,gap:10,cursor:“pointer”,fontSize:14}}>  
+<input type=“checkbox” checked={inclSchool} onChange={e=>setInclSchool(e.target.checked)}/>  
+<span style={{fontWeight:“bold”,color:CF}}>Inkluder helligdager + Nesodden skolerute</span>  
+</label>  
+</div>}  
+<button onClick={doExport} disabled={!ok} style={{…bPri,width:“100%”,background:ok?CA:”#ccc”,cursor:ok?“pointer”:“not-allowed”,fontSize:15,padding:“13px”}}>  
+{fmt===“pdf”?“Apne utskrift”:fmt===“txt”?“Last ned tekstfil”:“Last ned .ics”}  
+</button>  
+</div>  
+</div>  
+</div>  
+);  
+}  
+  
+function TemplateManager({templates,onSave,onInsert,onClose}){  
+const [tab,setTab]=useState(“bruk”);  
+const [local,setLocal]=useState(()=>templates.map(t=>({…t})));  
+const [editing,setEditing]=useState(null);  
+const [nL,setNL]=useState(””);  
+const [nT,setNT]=useState(””);  
+function addNew(){if(!nL.trim()||!nT.trim())return;setLocal(l=>[…l,{id:“u”+Date.now(),label:nL.trim(),text:nT.trim()}]);setNL(””);setNT(””);}  
+function saveEdit(){if(!editing)return;setLocal(l=>l.map(t=>t.id===editing.id?{…editing}:t));setEditing(null);}  
+function commit(){onSave(local);onClose();}  
+return (  
+<div style={{position:“fixed”,inset:0,background:“rgba(0,0,0,0.45)”,zIndex:50,display:“flex”,alignItems:“center”,justifyContent:“center”,padding:16}} onClick={e=>e.target===e.currentTarget&&commit()}>  
+<div style={{background:”#fff”,borderRadius:16,width:“100%”,maxWidth:480,maxHeight:“88vh”,overflow:“hidden”,display:“flex”,flexDirection:“column”,boxShadow:“0 8px 32px rgba(0,0,0,0.2)”}}>  
+<div style={{background:CA,color:”#fff”,padding:“13px 16px”,display:“flex”,justifyContent:“space-between”,alignItems:“center”,flexShrink:0}}>  
+<span style={{fontSize:15,fontStyle:“italic”}}>Maler</span>  
+<button onClick={commit} style={{background:“none”,border:“none”,color:”#fff”,fontSize:20,cursor:“pointer”}}>x</button>  
+</div>  
+<div style={{display:“flex”,borderBottom:“1px solid #E0D8CC”,flexShrink:0}}>  
+{[[“bruk”,“Bruk mal”],[“rediger”,“Rediger / Ny”]].map(([v,l])=>(  
+<button key={v} onClick={()=>setTab(v)} style={{flex:1,padding:“11px”,background:tab===v?CAL:”#fff”,border:“none”,borderBottom:tab===v?`2px solid ${CA}`:“2px solid transparent”,fontSize:13,fontWeight:tab===v?“bold”:“normal”,color:tab===v?CA:”#666”,cursor:“pointer”}}>{l}</button>  
+))}  
+</div>  
+<div style={{overflowY:“auto”,flex:1}}>  
+{tab===“bruk”&&<>  
+<div style={{padding:“10px 14px 4px”,fontSize:11,color:”#999”,textTransform:“uppercase”,letterSpacing:1}}>Trykk for aa sette inn</div>  
+{local.map(t=>(  
+<div key={t.id} onClick={()=>{onInsert(t.text);commit();}} style={{padding:“12px 16px”,borderBottom:“1px solid #F0E8E0”,cursor:“pointer”}} onMouseEnter={e=>e.currentTarget.style.background=”#F5F0E8”} onMouseLeave={e=>e.currentTarget.style.background=”#fff”}>  
+<div style={{fontWeight:“bold”,color:CA,fontSize:13,marginBottom:4}}>{t.label}</div>  
+<div style={{fontSize:12,color:”#666”,lineHeight:1.5}}><TParts text={t.text}/></div>  
+</div>  
+))}  
+</>}  
+{tab===“rediger”&&<div style={{padding:“16px”}}>  
+{editing?<>  
+<input value={editing.label} onChange={e=>setEditing({…editing,label:e.target.value})} style={inpSt}/>  
+<textarea value={editing.text} onChange={e=>setEditing({…editing,text:e.target.value})} style={{…inpSt,height:90,resize:“vertical”}}/>  
+<div style={{display:“flex”,gap:8}}><button onClick={saveEdit} style={bPri}>Lagre</button><button onClick={()=>setEditing(null)} style={bSec}>Avbryt</button></div>  
+</>:<>  
+<input value={nL} onChange={e=>setNL(e.target.value)} placeholder=“Navn paa mal” style={inpSt}/>  
+<textarea value={nT} onChange={e=>setNT(e.target.value)} placeholder=”[Navn]: Jobbet med [fag]. [Kommentar].” style={{…inpSt,height:90,resize:“vertical”}}/>  
+<button onClick={addNew} style={bPri}>Legg til</button>  
+<div style={{marginTop:18,borderTop:“1px solid #F0E8E0”,paddingTop:14}}>  
+{local.map(t=>(  
+<div key={t.id} style={{display:“flex”,alignItems:“center”,justifyContent:“space-between”,padding:“8px 0”,borderBottom:“1px solid #F5F0E8”}}>  
+<span style={{fontSize:13}}>{t.label}</span>  
+<div style={{display:“flex”,gap:6}}>  
+<button onClick={()=>setEditing({…t})} style={{background:“none”,border:`1px solid ${CA}`,borderRadius:6,color:CA,padding:“3px 10px”,fontSize:12,cursor:“pointer”}}>Rediger</button>  
+<button onClick={()=>setLocal(l=>l.filter(x=>x.id!==t.id))} style={{background:“none”,border:“1px solid #C0503A”,borderRadius:6,color:”#C0503A”,padding:“3px 10px”,fontSize:12,cursor:“pointer”}}>Slett</button>  
+</div>  
+</div>  
+))}  
+</div>  
+</>}  
+</div>}  
+</div>  
+<div style={{padding:“12px 16px”,borderTop:“1px solid #E0D8CC”,flexShrink:0,background:”#FAFAF8”}}>  
+<button onClick={commit} style={{…bPri,width:“100%”}}>Lukk og lagre maler</button>  
+</div>  
+</div>  
+</div>  
+);  
+}  
+  
+function MainApp({user}) {  
+const today    = todayISO();  
+const todayObj = new Date(today+“T00:00:00”);  
+const userRef  = db.collection(“users”).doc(user.uid);  
+  
+const [logs,      setLogs]      = useState({});  
+const [students,  setStudents]  = useState([]);  
+const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);  
+const [loading,   setLoading]   = useState(true);  
+const [saving,    setSaving]    = useState(false);  
+const [year,      setYear]      = useState(todayObj.getFullYear());  
+const [month,     setMonth]     = useState(todayObj.getMonth());  
+const [selDate,   setSelDate]   = useState(today);  
+const [view,      setView]      = useState(“calendar”);  
+const [draft,     setDraft]     = useState(””);  
+const [saved,     setSaved]     = useState(false);  
+const [searchQ,   setSearchQ]   = useState(””);  
+const [searchFrom,setSearchFrom]= useState(””);  
+const [searchTo,  setSearchTo]  = useState(””);  
+const [showTmpl,  setShowTmpl]  = useState(false);  
+const [showExp,   setShowExp]   = useState(false);  
+const [showShare, setShowShare] = useState(false);  
+const [showBrks,  setShowBrks]  = useState(false);  
+const [newStu,    setNewStu]    = useState(””);  
+const textRef = useRef(null);  
+  
+useEffect(() => {  
+const unsubLogs = userRef.collection(“logs”).onSnapshot(snap => {  
+const data = {};  
+snap.forEach(doc => { data[doc.id] = doc.data(); });  
+setLogs(data); setLoading(false);  
+}, () => setLoading(false));  
+const unsubSettings = userRef.collection(“settings”).doc(“data”).onSnapshot(snap => {  
+if (snap.exists) {  
+const d = snap.data();  
+if (d.students)  setStudents(d.students);  
+if (d.templates) setTemplates(d.templates);  
+}  
+});  
+return () => { unsubLogs(); unsubSettings(); };  
+}, [user.uid]);  
+  
+useEffect(() => {  
+if (view===“day”) { setDraft(logs[selDate]?.notat||””); setSaved(false); }  
+}, [selDate, view]);  
+  
+async function handleSave() {  
+setSaving(true);  
+try {  
+if (draft.trim()) {  
+await userRef.collection(“logs”).doc(selDate).set({ notat: draft, updatedAt: new Date().toISOString() });  
+} else {  
+await userRef.collection(“logs”).doc(selDate).delete();  
+}  
+setSaved(true); setTimeout(()=>setSaved(false),2000);  
+} catch(e) { alert(“Kunne ikke lagre: “+e.message); }  
+setSaving(false);  
+}  
+  
+async function saveSettings(s, t) {  
+try { await userRef.collection(“settings”).doc(“data”).set({ students: s, templates: t }, { merge: true }); } catch(e) { console.error(e); }  
+}  
+async function saveStudents(list) { setStudents(list); await saveSettings(list, templates); }  
+async function saveTemplates(list){ setTemplates(list); await saveSettings(students, list); }  
+  
+function insertTemplate(text) {  
+const el=textRef.current;  
+if(!el){setDraft(d=>d?d+”\n\n”+text:text);return;}  
+const start=el.selectionStart, before=draft.slice(0,start), after=draft.slice(el.selectionEnd);  
+const insert=(before&&!before.endsWith(”\n”))?”\n”+text:text;  
+const next=before+insert+after;  
+setDraft(next); setSaved(false);  
+setTimeout(()=>{  
+el.focus();  
+const ph=next.indexOf(”[”,start);  
+if(ph>-1){const pe=next.indexOf(”]”,ph);el.selectionStart=ph;el.selectionEnd=pe+1;}  
+else{el.selectionStart=el.selectionEnd=start+insert.length;}  
+},0);  
+}  
+  
+async function handleShare(){  
+const text=`${fmtLong(selDate)}\n\n${draft}`;  
+if(navigator.share){try{await navigator.share({title:“Arbeidslogg”,text});return;}catch{}}  
+try{await navigator.clipboard.writeText(text);}catch{}  
+setShowShare(true);setTimeout(()=>setShowShare(false),2500);  
+}  
+  
+function addStudent(){const n=newStu.trim();if(!n||students.includes(n))return;saveStudents([…students,n].sort());setNewStu(””);}  
+function prevMonth(){if(month===0){setYear(y=>y-1);setMonth(11);}else setMonth(m=>m-1);}  
+function nextMonth(){if(month===11){setYear(y=>y+1);setMonth(0);}else setMonth(m=>m+1);}  
+  
+const hols  = holidays(year);  
+const exts  = extras(year);  
+const dim   = daysInMonth(year,month);  
+const fd    = firstDay(year,month);  
+const mBrks = getBreaksMonth(year,month);  
+  
+const searchResults = Object.entries(logs).filter(([d,v])=>{  
+if(!v.notat?.trim())return false;  
+if(searchQ.trim()&&!v.notat.toLowerCase().includes(searchQ.toLowerCase()))return false;  
+if(searchFrom&&d<searchFrom)return false;  
+if(searchTo&&d>searchTo)return false;  
+return true;  
+}).sort((a,b)=>b[0].localeCompare(a[0]));  
+  
+if (loading) return (  
+<div style={{minHeight:“100vh”,display:“flex”,alignItems:“center”,justifyContent:“center”,background:”#F5F0E8”}}>  
+<div style={{textAlign:“center”,color:CA,fontSize:15,fontStyle:“italic”}}>📖 Laster inn loggen din…</div>  
+</div>  
+);  
+  
+const topTitle = {calendar:“Min arbeidslogg”,day:fmtLong(selDate),search:“Sok i loggen”,students:“Elever”}[view];  
+  
+return (  
+<div style={{minHeight:“100vh”,background:”#F5F0E8”}}>  
+{showExp   && <ExportModal logs={logs} year={year} month={month} selDate={selDate} view={view} onClose={()=>setShowExp(false)}/>}  
+{showTmpl  && <TemplateManager templates={templates} onSave={saveTemplates} onInsert={insertTemplate} onClose={()=>setShowTmpl(false)}/>}  
+{showShare && <div style={{position:“fixed”,bottom:30,left:“50%”,transform:“translateX(-50%)”,background:”#333”,color:”#fff”,borderRadius:20,padding:“10px 20px”,fontSize:14,zIndex:99}}>Kopiert!</div>}  
+  
+```  
+  <div style={{background:CA,color:"#fff",padding:"13px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:20,boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>  
+    <div style={{display:"flex",alignItems:"center",gap:10}}>  
+      {view!=="calendar"&&<button onClick={()=>setView("calendar")} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer",lineHeight:1,padding:0}}>&#8592;</button>}  
+      <span style={{fontSize:13,fontStyle:"italic",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{topTitle}</span>  
+    </div>  
+    <div style={{display:"flex",gap:5,alignItems:"center"}}>  
+      {view==="calendar"&&<>  
+        <button onClick={()=>setShowExp(true)} style={sBtn}>Eksport</button>  
+        <button onClick={()=>setView("search")} style={sBtn}>Sok</button>  
+        <button onClick={()=>setView("students")} style={sBtn}>Elever</button>  
+      </>}  
+      {view==="day"&&<>  
+        <button onClick={()=>setShowTmpl(true)} style={sBtn}>Maler</button>  
+        <button onClick={()=>setShowExp(true)} style={sBtn}>Eksport</button>  
+        <button onClick={handleShare} style={sBtn}>Del</button>  
+        <button onClick={handleSave} disabled={saving} style={{...sBtn,background:saved?"#5C9E6B":"rgba(255,255,255,0.2)",fontWeight:"bold"}}>{saving?"...":saved?"OK":"Lagre"}</button>  
+      </>}  
+      <img src={user.photoURL||""} alt="" style={{width:28,height:28,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.4)",marginLeft:4,cursor:"pointer"}} onClick={()=>{ if(confirm("Logge ut?")) auth.signOut(); }} title="Trykk for aa logge ut"/>  
+    </div>  
+  </div>  
+  
+  <div style={{maxWidth:640,margin:"0 auto",paddingBottom:60}}>  
+    {view==="calendar"&&<>  
+      <div style={{background:"#fff",padding:"14px 18px 10px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid #E0D8CC"}}>  
+        <button onClick={prevMonth} style={nvBtn}>&#8249;</button>  
+        <span style={{fontSize:17,fontWeight:"bold",letterSpacing:1}}>{MONTHS[month]} {year}</span>  
+        <button onClick={nextMonth} style={nvBtn}>&#8250;</button>  
+      </div>  
+      <div style={{background:"#fff",display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"2px solid #E0D8CC"}}>  
+        {DAYS.map(d=><div key={d} style={{textAlign:"center",padding:"7px 0",fontSize:10,color:d==="Lor"||d==="Son"?"#B0A090":"#666",fontWeight:"bold",letterSpacing:1,textTransform:"uppercase"}}>{d}</div>)}  
+      </div>  
+      <div style={{background:"#fff"}}>  
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>  
+          {Array.from({length:fd}).map((_,i)=><div key={`e${i}`} style={{minHeight:68,borderRight:"1px solid #F0E8E0",borderBottom:"1px solid #F0E8E0"}}/>)}  
+          {Array.from({length:dim}).map((_,i)=>{  
+            const day=i+1, ds=ymd(year,month,day);  
+            const isT=ds===today, hasL=!!logs[ds]?.notat?.trim();  
+            const dow=(fd+i)%7, isWE=dow>=5;  
+            const isH=!!hols[ds], isE=!!exts[ds];  
+            const hn=hols[ds]||exts[ds]||"";  
+            const brk=getBreak(ds), isF=!!brk&&!isH;  
+            const bg=isT?CAL:isH?CHB:isF?CFB:isWE?"#FAF7F2":"#fff";  
+            return (  
+              <div key={day} onClick={()=>{setSelDate(ds);setView("day");}} style={{minHeight:68,borderRight:"1px solid #F0E8E0",borderBottom:"1px solid #F0E8E0",padding:"6px 5px 4px",cursor:"pointer",background:bg}}>  
+                <div style={{width:23,height:23,borderRadius:"50%",background:isT?CT:"transparent",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:1}}>  
+                  <span style={{fontSize:11,fontWeight:isT?"bold":"normal",color:isT?"#fff":isH?CH:isF?CF:isWE?"#B0A090":"#1A1A2E"}}>{day}</span>  
+                </div>  
+                {isH&&<div style={{fontSize:7,color:CH,fontWeight:"bold",lineHeight:1.2,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{hn}</div>}  
+                {!isH&&isE&&<div style={{fontSize:7,color:"#B0804A",lineHeight:1.2,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{hn}</div>}  
+                {isF&&<div style={{fontSize:7,color:CF,fontWeight:"bold",lineHeight:1.2,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{brk.name}</div>}  
+                {hasL&&<div style={{width:5,height:5,borderRadius:"50%",background:CA,margin:"1px auto"}}/>}  
+                {hasL&&<div style={{fontSize:7,color:"#888",lineHeight:1.2,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical"}}><HL text={logs[ds].notat.slice(0,25)} names={students}/></div>}  
+              </div>  
+            );  
+          })}  
+        </div>  
+      </div>  
+      <div style={{padding:"8px 16px",display:"flex",gap:14,flexWrap:"wrap",fontSize:11,color:"#888"}}>  
+        <span><span style={{color:CF}}>&#9632;</span> Skoleferie</span>  
+        <span><span style={{color:CH}}>&#9632;</span> Helligdag</span>  
+        <span><span style={{color:CA}}>&#9679;</span> Logg skrevet</span>  
+        <span style={{marginLeft:"auto",color:"#bbb",fontSize:10}}>Synkronisert &#9729;</span>  
+      </div>  
+      {mBrks.length>0&&<div style={{margin:"4px 16px 12px",background:"#fff",borderRadius:12,border:`1px solid ${CF}30`,overflow:"hidden"}}>  
+        <div onClick={()=>setShowBrks(v=>!v)} style={{padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",background:CFB}}>  
+          <span style={{fontSize:12,fontWeight:"bold",color:CF}}>Nesodden skolerute - {MONTHS[month]}</span>  
+          <span style={{color:CF}}>{showBrks?"^":"v"}</span>  
+        </div>  
+        {showBrks&&mBrks.map(b=>(  
+          <div key={b.from} style={{padding:"9px 16px",borderTop:`1px solid ${CF}15`,display:"flex",gap:14,alignItems:"center",fontSize:13}}>  
+            <span style={{color:CF,fontWeight:"bold",whiteSpace:"nowrap"}}>{b.name}</span>  
+            <span style={{color:"#555"}}>{fmtShort(b.from)}{b.from!==b.to&&` - ${fmtShort(b.to)}`}</span>  
+          </div>  
+        ))}  
+      </div>}  
+      <div style={{padding:"0 16px"}}>  
+        <div style={secL}>Siste oppforinger</div>  
+        {Object.entries(logs).filter(([,v])=>v.notat?.trim()).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,5).map(([d,val])=>(  
+          <div key={d} onClick={()=>{setSelDate(d);setView("day");}} style={card}>  
+            <div style={{fontSize:12,color:CA,fontWeight:"bold",marginBottom:5}}>{fmtLong(d)}</div>  
+            <div style={{fontSize:13,color:"#555",lineHeight:1.6,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}><HL text={val.notat} names={students} max={120}/></div>  
+          </div>  
+        ))}  
+        {!Object.keys(logs).length&&<div style={{textAlign:"center",color:"#B0A090",fontStyle:"italic",padding:"30px 0"}}>Trykk paa en dag for aa begynne aa logge.</div>}  
+      </div>  
+    </>}  
+  
+    {view==="day"&&<div style={{padding:"14px"}}>  
+      {hols[selDate]&&<div style={{background:CHB,borderRadius:10,padding:"9px 14px",marginBottom:10,fontSize:13,color:CH,fontWeight:"bold",border:`1px solid ${CH}30`}}>{hols[selDate]}</div>}  
+      {!hols[selDate]&&exts[selDate]&&<div style={{background:"#FDF6EE",borderRadius:10,padding:"9px 14px",marginBottom:10,fontSize:13,color:"#B0804A",border:"1px solid #F0DFC0"}}>{exts[selDate]}</div>}  
+      {getBreak(selDate)&&<div style={{background:CFB,borderRadius:10,padding:"9px 14px",marginBottom:10,fontSize:13,color:CF,fontWeight:"bold",border:`1px solid ${CF}30`}}>{getBreak(selDate).name} - Nesodden</div>}  
+      <div style={{background:"#fff",borderRadius:14,overflow:"hidden",border:"1px solid #E0D8CC",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>  
+        <div style={{background:CAL,padding:"11px 16px",borderBottom:"1px solid #E0D8CC",fontSize:12,color:CA,fontWeight:"bold"}}>Logg for dagen</div>  
+        <textarea ref={textRef} value={draft} onChange={e=>{setDraft(e.target.value);setSaved(false);}} autoFocus  
+          placeholder={"Skriv hva dere jobbet med...\n\nEks:\nOla: Leseflykt s. 24-28. God fremgang.\nKari: Addisjon. Trenger mer ovelse."}  
+          style={{width:"100%",minHeight:300,padding:"16px",border:"none",fontSize:15,lineHeight:1.85,resize:"vertical",outline:"none",color:"#1A1A2E",background:"#fff",boxSizing:"border-box"}}/>  
+        <div style={{padding:"7px 16px",background:"#FAFAF8",borderTop:"1px solid #F0E8E0",display:"flex",justifyContent:"space-between",fontSize:11,color:"#B0A090"}}>  
+          <span>{draft.trim().split(/\s+/).filter(Boolean).length} ord</span>  
+          <span>{draft.length} tegn</span>  
+        </div>  
+      </div>  
+      {students.length>0&&draft.trim()&&<div style={{marginTop:12,background:"#fff",borderRadius:12,border:"1px solid #E0D8CC",overflow:"hidden"}}>  
+        <div style={{background:"#F9F5F0",padding:"9px 16px",fontSize:10,fontWeight:"bold",color:"#888",borderBottom:"1px solid #E0D8CC",textTransform:"uppercase",letterSpacing:1}}>Forhandsvisning</div>  
+        <div style={{padding:"12px 16px",fontSize:14,lineHeight:2,whiteSpace:"pre-wrap"}}><HL text={draft} names={students}/></div>  
+      </div>}  
+    </div>}  
+  
+    {view==="search"&&<div style={{padding:"14px"}}>  
+      <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Sok paa elevnavn eller innhold..." autoFocus style={{width:"100%",padding:"12px 16px",borderRadius:10,border:"2px solid #D0C8BC",background:"#fff",fontSize:15,boxSizing:"border-box",outline:"none",marginBottom:10}}/>  
+      <div style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-end",flexWrap:"wrap"}}>  
+        <div style={{flex:1,minWidth:130}}>  
+          <div style={{fontSize:11,color:"#888",marginBottom:4}}>Fra dato</div>  
+          <input type="date" value={searchFrom} onChange={e=>setSearchFrom(e.target.value)} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid #D0C8BC",fontSize:13,boxSizing:"border-box",outline:"none",background:"#fff"}}/>  
+        </div>  
+        <div style={{flex:1,minWidth:130}}>  
+          <div style={{fontSize:11,color:"#888",marginBottom:4}}>Til dato</div>  
+          <input type="date" value={searchTo} onChange={e=>setSearchTo(e.target.value)} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid #D0C8BC",fontSize:13,boxSizing:"border-box",outline:"none",background:"#fff"}}/>  
+        </div>  
+        {(searchFrom||searchTo)&&<button onClick={()=>{setSearchFrom("");setSearchTo("");}} style={{background:"none",border:"1px solid #D0C8BC",borderRadius:8,padding:"9px 10px",fontSize:12,cursor:"pointer",color:"#888"}}>Nullstill</button>}  
+      </div>  
+      <div style={{fontSize:12,color:"#888",marginBottom:10}}>{searchResults.length} treff</div>  
+      {searchResults.map(([date,val])=>(  
+        <div key={date} onClick={()=>{setSelDate(date);setView("day");}} style={card}>  
+          <div style={{fontSize:12,color:CA,fontWeight:"bold",marginBottom:5}}>  
+            {fmtLong(date)}  
+            {hols[date]&&<span style={{color:CH,marginLeft:8,fontWeight:"normal"}}>{hols[date]}</span>}  
+            {getBreak(date)&&<span style={{color:CF,marginLeft:8,fontWeight:"normal"}}>{getBreak(date).name}</span>}  
+          </div>  
+          <div style={{fontSize:13,color:"#555",lineHeight:1.7}}><HL text={val.notat.slice(0,150)+(val.notat.length>150?"...":"")} names={students}/></div>  
+        </div>  
+      ))}  
+      {!searchResults.length&&<div style={{textAlign:"center",color:"#B0A090",fontStyle:"italic",marginTop:40}}>Ingen treff</div>}  
+    </div>}  
+  
+    {view==="students"&&<div style={{padding:"14px"}}>  
+      <div style={{background:"#fff",borderRadius:14,border:"1px solid #E0D8CC",overflow:"hidden",marginBottom:12}}>  
+        <div style={{background:CAL,padding:"11px 16px",fontSize:12,fontWeight:"bold",color:CA,borderBottom:"1px solid #E0D8CC"}}>Elevliste</div>  
+        <div style={{padding:"12px 16px",display:"flex",gap:8}}>  
+          <input value={newStu} onChange={e=>setNewStu(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addStudent()} placeholder="Skriv elevnavn og trykk Legg til..." style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid #D0C8BC",fontSize:14,outline:"none"}}/>  
+          <button onClick={addStudent} style={bPri}>Legg til</button>  
+        </div>  
+        {!students.length&&<div style={{textAlign:"center",color:"#B0A090",fontStyle:"italic",padding:"18px 16px 22px"}}>Ingen elever lagt til ennaa</div>}  
+        {students.map(n=>(  
+          <div key={n} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderTop:"1px solid #F0E8E0"}}>  
+            <mark style={{background:CNB,color:CN,borderRadius:4,padding:"2px 8px",fontWeight:"bold"}}>{n}</mark>  
+            <button onClick={()=>saveStudents(students.filter(s=>s!==n))} style={{background:"none",border:"none",color:"#C0A090",cursor:"pointer",fontSize:18}}>x</button>  
+          </div>  
+        ))}  
+      </div>  
+      <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #E0D8CC",fontSize:13,color:"#666",lineHeight:1.7}}>  
+        <strong style={{color:CA}}>Logget inn som:</strong><br/>  
+        {user.displayName}<br/>  
+        <span style={{fontSize:12,color:"#999"}}>{user.email}</span><br/>  
+        <button onClick={()=>auth.signOut()} style={{...bSec,marginTop:12,fontSize:13,padding:"8px 16px"}}>Logg ut</button>  
+      </div>  
+    </div>}  
+  </div>  
+</div>  
+```  
+  
+);  
+}  
+  
+function App() {  
+const [user,        setUser]        = useState(null);  
+const [authLoading, setAuthLoading] = useState(true);  
+const [loginError,  setLoginError]  = useState(””);  
+  
+useEffect(() => {  
+return auth.onAuthStateChanged(u => { setUser(u); setAuthLoading(false); });  
+}, []);  
+  
+async function handleLogin() {  
+setLoginError(””);  
+try {  
+const provider = new firebase.auth.GoogleAuthProvider();  
+await auth.signInWithPopup(provider);  
+} catch(e) {  
+if (e.code !== “auth/popup-closed-by-user”) setLoginError(“Innlogging feilet. Prov igjen.”);  
+}  
+}  
+  
+if (authLoading) return (  
+<div style={{minHeight:“100vh”,display:“flex”,alignItems:“center”,justifyContent:“center”,background:”#F5F0E8”}}>  
+<div style={{textAlign:“center”,color:CA,fontSize:15,fontStyle:“italic”}}>📖 Laster…</div>  
+</div>  
+);  
+if (!user) return <LoginScreen onLogin={handleLogin} error={loginError}/>;  
+return <MainApp user={user}/>;  
+}  
+  
+ReactDOM.createRoot(document.getElementById(“root”)).render(<App/>);  
+</script>  
+  
+</body>  
+</html>  
