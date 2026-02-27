@@ -623,6 +623,7 @@ const [authLoading, setAuthLoading] = useState(true);
 const [loginError,  setLoginError]  = useState(””);
 
 useEffect(() => {
+auth.getRedirectResult().catch(() => {});
 return auth.onAuthStateChanged(u => { setUser(u); setAuthLoading(false); });
 }, []);
 
@@ -630,9 +631,9 @@ async function handleLogin() {
 setLoginError(””);
 try {
 const provider = new firebase.auth.GoogleAuthProvider();
-await auth.signInWithPopup(provider);
+auth.signInWithRedirect(provider);
 } catch(e) {
-if (e.code !== “auth/popup-closed-by-user”) setLoginError(“Innlogging feilet. Prov igjen.”);
+setLoginError(“Innlogging feilet. Prov igjen.”);
 }
 }
 
